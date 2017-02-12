@@ -20,23 +20,26 @@
   }
 </style>
 <svg width="960" height="500"></svg>
+<div>
+  <button id="hideOneMonth">Hide one month</button><button id="showOneMonth">Show one month</button>
+</div>
 <script src="//d3js.org/d3.v4.min.js"></script>
 <script>
   var parseTime = d3.utcParse("%Y-%m-%dT%H:%M:%S.%L"),
     formatHour = d3.utcFormat("%-I:%M %p"),
     formatMonth = d3.utcFormat("%B");
-
-  var svg = d3.select("svg"),
-    margin = {
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 70
-    },
-    width = svg.attr("width") - margin.left - margin.right,
-    height = svg.attr("height") - margin.top - margin.bottom,
-    g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
+  var dayDecrease = 0;
+  var svg = d3.select("svg");
+  var margin = {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 70
+  };
+  var width = svg.attr("width") - margin.left - margin.right;
+  var height = svg.attr("height") - margin.top - margin.bottom;
+  var g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+  var csvData;
   var x = d3.scaleUtc()
     .rangeRound([0, width]);
 
@@ -63,21 +66,23 @@
       .tickSize(-width)
       .tickPadding(10));
 
+  var xaxis;
   d3.csv("sleep.csv", type, function(error, data) {
     if (error) throw error;
-
+    csvData = data;
     var date0 = data[0].day,
       date1 = d3.utcDay.offset(data[data.length - 1].day, 1);
 
     x.domain([date0, date1]);
+    xaxis = d3.axisBottom(x)
+      .tickFormat(formatMonth)
+      .tickSize(-height)
+      .tickPadding(-10);
 
     g.append("g")
       .attr("class", "axis axis--x")
       .attr("transform", "translate(0," + height + ")")
-      .call(d3.axisBottom(x)
-        .tickFormat(formatMonth)
-        .tickSize(-height)
-        .tickPadding(-10))
+      .call(xaxis)
       .selectAll("text")
       .attr("text-anchor", "start")
       .attr("x", 10)
@@ -92,6 +97,53 @@
       .attr("class", "data")
       .attr("d", area);
   });
+
+  d3.select('#hideOneMonth').on('click', () => {
+    dayDecrease += 15;
+    var lowerBound = d3.utcDay.offset(csvData[0].day, dayDecrease);
+    var upperBound = d3.utcDay.offset(csvData[csvData.length - 1].day, -dayDecrease);
+
+    var newData = csvData.filter((dataElem) => {
+      return dataElem.day > lowerBound && dataElem.day < upperBound
+    });
+    var date0 = newData[0].day;
+    var date1 = d3.utcDay.offset(newData[newData.length - 1].day, 1);
+    var newX = d3.scaleUtc()
+      .rangeRound([0, width]);
+    newX.domain([date0, date1]);
+    xaxis2 = d3.axisBottom(newX)
+      .tickFormat(formatMonth)
+      .tickSize(-height)
+      .tickPadding(-10);
+    svg.transition().select(".axis.axis--x") // change the x axis
+      .duration(750)
+      .call(xaxis2);
+    newData = newData.concat({
+      day: date1,
+      0: 0,
+      1: 0
+    });
+    var area2 = d3.area(newData)
+      .curve(d3.curveStepAfter)
+      .x(function(d) {
+        return newX(d.day);
+      })
+      .y0(function(d) {
+        return y(date(d[0] - d.day));
+      })
+      .y1(function(d) {
+        return y(date(d[1] - d.day));
+      });
+    //g.remove(".axis");
+    svg.transition().select("d.axis") // change the x axis
+      .duration(750)
+      .datum(newData.concat({
+        day: date1,
+        0: 0,
+        1: 0
+      }))
+      .call(xaxis2);
+  })
 
   function type(d) {
     d = [parseTime(d.asleep), parseTime(d.awake)];
